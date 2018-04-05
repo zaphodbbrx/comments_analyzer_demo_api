@@ -11,6 +11,14 @@ import nltk
 from nltk.corpus import wordnet
 from sklearn.base import TransformerMixin
 from sklearn.base import BaseEstimator
+from polyglot.text import Text
+from polyglot.detect import Detector
+
+class LanguageNotAvailableError(Exception):
+    pass
+
+class LanguageNotRecognisedError(Exception):
+    pass
 
 class TextNormalizer(BaseEstimator,TransformerMixin):
     def __init__(self, vocab_filename = None):
@@ -18,7 +26,7 @@ class TextNormalizer(BaseEstimator,TransformerMixin):
             vocab_filename = 'pw.txt'
         self.__vocab_filename = vocab_filename
         self.__enc = enchant.Dict("en_UK")
-        
+        self.__langs = ['en']
     
     def __clean_comment(self, text):
 
@@ -60,10 +68,18 @@ class TextNormalizer(BaseEstimator,TransformerMixin):
                 processed.append(wnl.lemmatize(check_spelling(word)))
         res = ' '.join(processed)
         return res
-    
+    def __lang_detect(self, text, threshold = 0.9):
+        detector = Detector(text,quiet = True)
+        if detector.language.confidence>threshold:
+            return detector.language.code
+        else:
+            raise LanguageNotRecognisedError('Could not recognize the language')
     def transform(self, X, y=None, **fit_params):
         res = []
         for line in X:
+            lang = self.__lang_detect(line)
+            if lang not in self.__langs:
+                raise LanguageNotAvailableError('Language detected is not available')
             res.append(self.__clean_comment(line))
         return res
 

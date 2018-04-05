@@ -8,6 +8,14 @@ from nltk.tokenize import TreebankWordTokenizer
 from sklearn.linear_model import RidgeClassifierCV
 from sklearn.feature_extraction.text import CountVectorizer
 import pickle
+from polyglot.detect import Detector
+import numpy as np
+
+class LanguageNotAvailableError(Exception):
+    pass
+
+class LanguageNotRecognisedError(Exception):
+    pass 
 
 class KeyWordClassifier(TransformerMixin):
     def __init__(self, categories, keyword_folder = ''):
@@ -115,7 +123,12 @@ class CategoryClassifier():
             
         self.__balance_model = Pipeline([('text_cleaner', self.__tn), ('classifier', KeyWordClassifier(keyword_folder = 'subcats/balance/', categories = subcategories))])
         self.__balance_model.fit(X = [])            
-    
+    def __lang_detect(self, text, threshold = 0.9):
+        detector = Detector(text,quiet = True)
+        if detector.language.confidence>threshold:
+            return detector.language.code
+        else:
+            raise LanguageNotRecognisedError('Could not recognize the language')    
     def predict(self, comments):
         balance_subcats = {
                 1:'Combat Balance',
@@ -125,20 +138,39 @@ class CategoryClassifier():
                 }
         res = []
         for comment in comments:
-            res.append(self.__model.predict(comment)[0])
+            #res.append(self.__model.predict_proba(comment)[0])
             classes_labels = {
-                1:'Root Category: Balance.\nSubcategory:   %s.' % (balance_subcats[self.__balance_model.predict(comment)[0]]),
-                2:'Root Category: Graphics',
-                3:'Root Category: Bug',
-                4:'Root Category: Advertising',
-                5:'Root Category: Monetization',
-                0:'Root Category: Irrelevant/Other'
+                1:'Balance',
+                2:'Graphics',
+                3:'Bug',
+                4:'Advertising',
+                5:'Monetization',
+                0:'Irrelevant/Other'
                 }
-            print(classes_labels[self.__model.predict(comment)[0]])
+            subclasses_labels = {
+                    1: balance_subcats[self.__balance_model.predict(comment)[0]],
+                    2: 'not trained',
+                    3: 'not trained',
+                    4: 'not trained',
+                    5: 'not trained',
+                    0: 'not trained'
+                    }
+            predicted_probs = self.__model.predict_proba(comment)[0]
+            prediction_root = classes_labels[np.argmax(predicted_probs)]
+            prediction_sub = subclasses_labels[np.argmax(predicted_probs)]
+            output = {
+                    'comment':comment,
+                    'lang':self.__lang_detect(comment[0]),
+                    'root_category': prediction_root,
+                    'probability':np.max(predicted_probs),
+                    'subcategory': prediction_sub
+                    }
+            res.append(output)
+            #print(classes_labels[self.__model.predict(comment)[0]])
         return res[0]
 if __name__ == '__main__':
     cat_classifier = CategoryClassifier(model = 'logit_load')
     while True:
         review = input()
         print('\n')
-        cat_classifier.predict([[review]])
+        print(cat_classifier.predict([[review]]))
